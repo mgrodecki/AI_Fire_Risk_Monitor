@@ -1,0 +1,4 @@
+date,cell_id,lightning_count,dry_lightning_count,lightning_probability
+2025-06-01,32.5000_-123.5000,4,2,0.7
+2025-06-02,32.5000_-123.5000,1,1,0.45
+2025-06-01,33.5000_-122.5000,0,0,0.05

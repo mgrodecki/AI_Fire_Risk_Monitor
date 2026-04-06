@@ -1,0 +1,42 @@
+{
+  "model_filename": "wildfire_risk_model_real.joblib",
+  "metrics": {
+    "rows_train": 9700,
+    "rows_valid": 2500,
+    "positive_rate_train": 0.19835051546391752,
+    "positive_rate_valid": 0.1604,
+    "average_precision": 0.5797231817591826,
+    "roc_auc": 0.8965960515576233,
+    "brier_score": 0.11310823066332998
+  },
+  "feature_columns": [
+    "t2m_max_c",
+    "rh_min_pct",
+    "wind10m_max_ms",
+    "precip_mm",
+    "precip_3d_mm",
+    "precip_7d_mm",
+    "precip_30d_mm",
+    "dry_days_30d",
+    "vpd_kpa",
+    "fwi_proxy",
+    "ndvi",
+    "ndvi_anom_30d",
+    "veg_dryness_index",
+    "soil_moisture_surface_m3m3",
+    "soil_moisture_pct_of_normal",
+    "lightning_count",
+    "dry_lightning_count",
+    "lightning_probability",
+    "lightning_count_prev_3d",
+    "dry_lightning_count_prev_3d",
+    "fire_count_prev_7d",
+    "frp_sum_prev_7d",
+    "lat_center",
+    "lon_center",
+    "month_sin",
+    "month_cos",
+    "doy_sin",
+    "doy_cos"
+  ]
+}

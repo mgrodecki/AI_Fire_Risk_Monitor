@@ -1,0 +1,53 @@
+project:
+  name: wildfire-risk-firms-openmeteo
+
+paths:
+  data_root: data
+  raw_dir: data/raw
+  curated_dir: data/curated
+  external_dir: data/external
+  artifacts_dir: artifacts
+  models_dir: artifacts/models
+  manifests_dir: artifacts/manifests
+
+grid:
+  resolution_deg: 1.0
+  lat_min: 32.0
+  lat_max: 42.0
+  lon_min: -124.0
+  lon_max: -114.0
+
+training:
+  target_column: label_fire_next_1d
+  random_state: 42
+  model_filename: wildfire_risk_model.joblib
+  model_filename_real: wildfire_risk_model_real.joblib
+  prediction_thresholds:
+    low: 0.10
+    moderate: 0.25
+    high: 0.50
+
+inference:
+  default_prediction_date: "2026-03-21"
+
+real_data:
+  firms_source: VIIRS_NOAA20_SP
+  forecast_days: 7
+  openmeteo_history_file: data/raw/openmeteo_history.csv
+  openmeteo_forecast_file: data/raw/openmeteo_forecast.csv
+  firms_events_file: data/raw/firms_events.csv
+  ndvi_observations_file: data/raw/ndvi_observations.csv
+  smap_observations_file: data/raw/smap_observations.csv
+  lightning_observations_file: data/raw/lightning_observations.csv
+  training_table_real_file: data/curated/training_table_real.csv
+
+api_connectors:
+  lpdaac_product: MOD13A2.061
+  lpdaac_layer: _1_km_16_days_NDVI
+  sentinel_collection: SENTINEL-2
+  sentinel_processing_level: S2MSI2A
+  sentinel_cloud_cover_max: 30
+  sentinel_refine_radius_km: 20
+  smap_short_name: SPL3SMP_E
+  goes_satellite: goes19
+  goes_product: GLM-L2-LCFA

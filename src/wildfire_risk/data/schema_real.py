@@ -1,0 +1,37 @@
+REAL_FEATURE_COLUMNS = [
+    "t2m_max_c",
+    "rh_min_pct",
+    "wind10m_max_ms",
+    "precip_mm",
+    "precip_3d_mm",
+    "precip_7d_mm",
+    "precip_30d_mm",
+    "dry_days_30d",
+    "vpd_kpa",
+    "fwi_proxy",
+    "ndvi",
+    "ndvi_anom_30d",
+    "veg_dryness_index",
+    "soil_moisture_surface_m3m3",
+    "soil_moisture_pct_of_normal",
+    "lightning_count",
+    "dry_lightning_count",
+    "lightning_probability",
+    "lightning_count_prev_3d",
+    "dry_lightning_count_prev_3d",
+    "fire_count_prev_7d",
+    "frp_sum_prev_7d",
+    "lat_center",
+    "lon_center",
+    "month_sin",
+    "month_cos",
+    "doy_sin",
+    "doy_cos",
+]
+
+REAL_KEY_COLUMNS = ["date", "cell_id"]
+REAL_LABEL_COLUMNS = [
+    "label_fire_count_next_1d",
+    "label_frp_sum_next_1d",
+    "label_fire_next_1d",
+]
