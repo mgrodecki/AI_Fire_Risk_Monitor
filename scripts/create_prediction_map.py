@@ -159,7 +159,7 @@ def build_map_html(df: pd.DataFrame, title: str) -> str:
         <b>Pred Fire Next 1d:</b> ${f.pred_fire_next_1d.toFixed(6)}<br/>
         <hr/>
         <b>VPD (kPa):</b> ${f.vpd_kpa.toFixed(3)}<br/>
-        <b>FWI Proxy:</b> ${f.fwi_proxy.toFixed(2)}<br/>
+        <b>Canadian FWI:</b> ${f.fwi_proxy.toFixed(2)}<br/>
         <b>NDVI:</b> ${f.ndvi.toFixed(3)}<br/>
         <b>Soil Moisture:</b> ${f.soil_moisture_surface_m3m3.toFixed(3)}<br/>
         <b>Lightning Count:</b> ${f.lightning_count.toFixed(2)}

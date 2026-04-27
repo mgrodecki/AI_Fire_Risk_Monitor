@@ -15,7 +15,7 @@ grid:
   lat_min: 32.0
   lat_max: 42.0
   lon_min: -124.0
-  lon_max: -114.0
+  lon_max: -104.0
 
 training:
   target_column: label_fire_next_1d
@@ -42,6 +42,16 @@ real_data:
   training_table_real_file: data/curated/training_table_real.csv
 
 api_connectors:
+  copdem_s3_root: s3://copernicus-dem-30m
+  copdem_dataset: GLO-30
+  copdem_resolution_m: 30
+  worldcover_stac_urls:
+    - https://services.terrascope.be/stac/v1
+    - https://planetarycomputer.microsoft.com/api/stac/v1
+  worldcover_collection_terrascope: urn:eop:VITO:ESA_WorldCover_10m_2021_V2
+  worldcover_collection_planetary: esa-worldcover
+  worldcover_asset_key: map
+  worldcover_timeout_seconds: 30
   lpdaac_product: MOD13A2.061
   lpdaac_layer: _1_km_16_days_NDVI
   sentinel_collection: SENTINEL-2

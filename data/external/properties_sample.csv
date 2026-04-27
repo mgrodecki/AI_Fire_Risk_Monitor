@@ -1,0 +1,6 @@
+﻿property_id,lat,lon,slope_deg,vegetation_type,ndvi
+prop_001,34.0522,-118.2437,12,urban,0.32
+prop_002,38.5816,-121.4944,18,grass,0.55
+prop_003,39.5296,-119.8138,27,shrub,0.41
+prop_004,40.5865,-122.3917,34,forest,0.66
+prop_005,36.1699,-115.1398,9,urban,0.28

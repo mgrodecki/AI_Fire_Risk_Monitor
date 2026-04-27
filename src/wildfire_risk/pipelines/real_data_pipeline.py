@@ -119,10 +119,17 @@ def _compute_weather_features(df: pd.DataFrame) -> pd.DataFrame:
 
     Adds:
     - vpd_kpa: approximate vapor pressure deficit
-    - fwi_proxy: simple composite weather risk proxy
+    - ffmc, dmc, dc, isi, bui, fwi: Canadian Fire Weather Index System
+    - fwi_proxy: compatibility alias pointing to real FWI
     """
     out = df.copy()
-    rh = np.clip(out["rh_min_pct"].astype(float), 1, 100)
+    out["t2m_max_c"] = pd.to_numeric(out["t2m_max_c"], errors="coerce")
+    out["rh_min_pct"] = pd.to_numeric(out["rh_min_pct"], errors="coerce")
+    out["wind10m_max_ms"] = pd.to_numeric(out["wind10m_max_ms"], errors="coerce")
+    out["precip_mm"] = pd.to_numeric(out["precip_mm"], errors="coerce")
+    out["date"] = pd.to_datetime(out["date"])
+
+    rh = np.clip(out["rh_min_pct"].astype(float), 1.0, 100.0)
     t = out["t2m_max_c"].astype(float)
 
     # Approximate VPD from temp and RH
@@ -130,15 +137,185 @@ def _compute_weather_features(df: pd.DataFrame) -> pd.DataFrame:
     ea = es * (rh / 100.0)
     out["vpd_kpa"] = (es - ea).round(3)
 
-    # Simple fire-weather proxy for an MVP
-    fwi_proxy = (
-        0.40 * out["t2m_max_c"].astype(float)
-        + 0.35 * out["wind10m_max_ms"].astype(float) * 3.6
-        - 0.30 * out["rh_min_pct"].astype(float) / 2.0
-        - 0.50 * out["precip_mm"].astype(float)
-        + 8.0 * out["vpd_kpa"].astype(float)
-    )
-    out["fwi_proxy"] = np.clip(fwi_proxy, 0, None).round(2)
+    # Northern Hemisphere monthly factors for DMC/DC.
+    dmc_day_length = np.array([6.5, 7.5, 9.0, 12.8, 13.9, 13.9, 12.4, 10.9, 9.4, 8.0, 7.0, 6.0], dtype=float)
+    dc_drying_factor = np.array([-1.6, -1.6, -1.6, 0.9, 3.8, 5.8, 6.4, 5.0, 2.4, 0.4, -1.6, -1.6], dtype=float)
+
+    def _ffmc_step(prev_ffmc: float, temp_c: float, rh_pct: float, wind_kmh: float, rain_mm: float) -> float:
+        ffmc_prev = float(np.clip(prev_ffmc, 0.0, 101.0))
+        temp_c = float(np.nan_to_num(temp_c, nan=20.0))
+        rh_pct = float(np.clip(np.nan_to_num(rh_pct, nan=45.0), 0.0, 100.0))
+        wind_kmh = float(np.clip(np.nan_to_num(wind_kmh, nan=10.0), 0.0, None))
+        rain_mm = float(np.clip(np.nan_to_num(rain_mm, nan=0.0), 0.0, None))
+
+        mo = 147.2 * (101.0 - ffmc_prev) / (59.5 + ffmc_prev)
+        if rain_mm > 0.5:
+            rf = rain_mm - 0.5
+            if mo > 150.0:
+                mo = mo + 42.5 * rf * np.exp(-100.0 / (251.0 - mo)) * (1.0 - np.exp(-6.93 / rf))
+                mo = mo + 0.0015 * (mo - 150.0) ** 2 * np.sqrt(rf)
+            else:
+                mo = mo + 42.5 * rf * np.exp(-100.0 / (251.0 - mo)) * (1.0 - np.exp(-6.93 / rf))
+            mo = min(mo, 250.0)
+
+        ed = (
+            0.942 * (rh_pct ** 0.679)
+            + 11.0 * np.exp((rh_pct - 100.0) / 10.0)
+            + 0.18 * (21.1 - temp_c) * (1.0 - np.exp(-0.115 * rh_pct))
+        )
+        if mo < ed:
+            ew = (
+                0.618 * (rh_pct ** 0.753)
+                + 10.0 * np.exp((rh_pct - 100.0) / 10.0)
+                + 0.18 * (21.1 - temp_c) * (1.0 - np.exp(-0.115 * rh_pct))
+            )
+            kl = 0.424 * (1.0 - ((100.0 - rh_pct) / 100.0) ** 1.7) + 0.0694 * np.sqrt(wind_kmh) * (
+                1.0 - ((100.0 - rh_pct) / 100.0) ** 8
+            )
+            kw = kl * 0.581 * np.exp(0.0365 * temp_c)
+            mo = ew - (ew - mo) * (10.0 ** (-kw))
+        else:
+            kl = 0.424 * (1.0 - (rh_pct / 100.0) ** 1.7) + 0.0694 * np.sqrt(wind_kmh) * (1.0 - (rh_pct / 100.0) ** 8)
+            kw = kl * 0.581 * np.exp(0.0365 * temp_c)
+            mo = ed + (mo - ed) * (10.0 ** (-kw))
+
+        ffmc = 59.5 * (250.0 - mo) / (147.2 + mo)
+        return float(np.clip(ffmc, 0.0, 101.0))
+
+    def _dmc_step(prev_dmc: float, month: int, temp_c: float, rh_pct: float, rain_mm: float) -> float:
+        dmc_prev = float(max(prev_dmc, 0.0))
+        temp_c = float(np.nan_to_num(temp_c, nan=20.0))
+        rh_pct = float(np.clip(np.nan_to_num(rh_pct, nan=45.0), 0.0, 100.0))
+        rain_mm = float(np.clip(np.nan_to_num(rain_mm, nan=0.0), 0.0, None))
+        month_idx = int(np.clip(month - 1, 0, 11))
+
+        rk = 1.894 * (temp_c + 1.1) * (100.0 - rh_pct) * dmc_day_length[month_idx] * 1e-6
+        rk = max(rk, 0.0)
+
+        if rain_mm > 1.5:
+            re = 0.92 * rain_mm - 1.27
+            mo = 20.0 + np.exp(5.6348 - dmc_prev / 43.43)
+            if dmc_prev <= 33.0:
+                b = 100.0 / (0.5 + 0.3 * dmc_prev)
+            elif dmc_prev <= 65.0:
+                b = 14.0 - 1.3 * np.log(dmc_prev)
+            else:
+                b = 6.2 * np.log(dmc_prev) - 17.2
+            mr = mo + (1000.0 * re) / (48.77 + b * re)
+            dmc_r = 43.43 * (5.6348 - np.log(max(mr - 20.0, 1e-6)))
+            dmc_new = max(dmc_r, 0.0) + 100.0 * rk
+        else:
+            dmc_new = dmc_prev + 100.0 * rk
+
+        return float(max(dmc_new, 0.0))
+
+    def _dc_step(prev_dc: float, month: int, temp_c: float, rain_mm: float) -> float:
+        dc_prev = float(max(prev_dc, 0.0))
+        temp_c = float(np.nan_to_num(temp_c, nan=20.0))
+        rain_mm = float(np.clip(np.nan_to_num(rain_mm, nan=0.0), 0.0, None))
+        month_idx = int(np.clip(month - 1, 0, 11))
+
+        if rain_mm > 2.8:
+            rd = 0.83 * rain_mm - 1.27
+            qo = 800.0 * np.exp(-dc_prev / 400.0)
+            qr = qo + 3.937 * rd
+            dc_r = 400.0 * np.log(800.0 / max(qr, 1e-6))
+            dc_r = max(dc_r, 0.0)
+        else:
+            dc_r = dc_prev
+
+        v = 0.36 * (temp_c + 2.8) + dc_drying_factor[month_idx]
+        v = max(v, 0.0)
+        dc_new = dc_r + 0.5 * v
+        return float(max(dc_new, 0.0))
+
+    def _isi_from_ffmc(ffmc: float, wind_kmh: float) -> float:
+        mo = 147.2 * (101.0 - ffmc) / (59.5 + ffmc)
+        ff = 19.115 * np.exp(-0.1386 * mo) * (1.0 + (mo**5.31) / 4.93e7)
+        return float(ff * np.exp(0.05039 * wind_kmh))
+
+    def _bui_from_dmc_dc(dmc: float, dc: float) -> float:
+        if dmc <= 0.4 * dc:
+            denom = dmc + 0.4 * dc
+            bui = (0.8 * dmc * dc / denom) if denom > 0 else 0.0
+        else:
+            denom = dmc + 0.4 * dc
+            bui = dmc - (1.0 - (0.8 * dc / denom)) * (0.92 + (0.0114 * dmc) ** 1.7)
+        return float(max(bui, 0.0))
+
+    def _fwi_from_isi_bui(isi: float, bui: float) -> float:
+        if bui <= 80.0:
+            fd = 0.626 * (bui**0.809) + 2.0
+        else:
+            fd = 1000.0 / (25.0 + 108.64 * np.exp(-0.023 * bui))
+        b = 0.1 * isi * fd
+        if b <= 1.0:
+            return float(max(b, 0.0))
+        return float(np.exp(2.72 * ((0.434 * np.log(b)) ** 0.647)))
+
+    ffmc_vals = np.full(len(out), np.nan, dtype=float)
+    dmc_vals = np.full(len(out), np.nan, dtype=float)
+    dc_vals = np.full(len(out), np.nan, dtype=float)
+    isi_vals = np.full(len(out), np.nan, dtype=float)
+    bui_vals = np.full(len(out), np.nan, dtype=float)
+    fwi_vals = np.full(len(out), np.nan, dtype=float)
+
+    if "cell_id" in out.columns:
+        grouped = out.sort_values(["cell_id", "date"]).groupby("cell_id", sort=False)
+        for _, g in grouped:
+            ffmc_prev = 85.0
+            dmc_prev = 6.0
+            dc_prev = 15.0
+            for idx, row in g.iterrows():
+                month = int(pd.Timestamp(row["date"]).month)
+                wind_kmh = float(np.clip(np.nan_to_num(row["wind10m_max_ms"], nan=3.0) * 3.6, 0.0, None))
+                ffmc = _ffmc_step(ffmc_prev, row["t2m_max_c"], row["rh_min_pct"], wind_kmh, row["precip_mm"])
+                dmc = _dmc_step(dmc_prev, month, row["t2m_max_c"], row["rh_min_pct"], row["precip_mm"])
+                dc = _dc_step(dc_prev, month, row["t2m_max_c"], row["precip_mm"])
+                isi = _isi_from_ffmc(ffmc, wind_kmh)
+                bui = _bui_from_dmc_dc(dmc, dc)
+                fwi = _fwi_from_isi_bui(isi, bui)
+
+                ffmc_vals[out.index.get_loc(idx)] = ffmc
+                dmc_vals[out.index.get_loc(idx)] = dmc
+                dc_vals[out.index.get_loc(idx)] = dc
+                isi_vals[out.index.get_loc(idx)] = isi
+                bui_vals[out.index.get_loc(idx)] = bui
+                fwi_vals[out.index.get_loc(idx)] = fwi
+
+                ffmc_prev, dmc_prev, dc_prev = ffmc, dmc, dc
+    else:
+        # Fallback for one-off frames without cell_id: process sequentially.
+        ffmc_prev = 85.0
+        dmc_prev = 6.0
+        dc_prev = 15.0
+        for i, row in out.sort_values("date").iterrows():
+            month = int(pd.Timestamp(row["date"]).month)
+            wind_kmh = float(np.clip(np.nan_to_num(row["wind10m_max_ms"], nan=3.0) * 3.6, 0.0, None))
+            ffmc = _ffmc_step(ffmc_prev, row["t2m_max_c"], row["rh_min_pct"], wind_kmh, row["precip_mm"])
+            dmc = _dmc_step(dmc_prev, month, row["t2m_max_c"], row["rh_min_pct"], row["precip_mm"])
+            dc = _dc_step(dc_prev, month, row["t2m_max_c"], row["precip_mm"])
+            isi = _isi_from_ffmc(ffmc, wind_kmh)
+            bui = _bui_from_dmc_dc(dmc, dc)
+            fwi = _fwi_from_isi_bui(isi, bui)
+
+            pos = out.index.get_loc(i)
+            ffmc_vals[pos] = ffmc
+            dmc_vals[pos] = dmc
+            dc_vals[pos] = dc
+            isi_vals[pos] = isi
+            bui_vals[pos] = bui
+            fwi_vals[pos] = fwi
+            ffmc_prev, dmc_prev, dc_prev = ffmc, dmc, dc
+
+    out["ffmc"] = np.round(ffmc_vals, 2)
+    out["dmc"] = np.round(dmc_vals, 2)
+    out["dc"] = np.round(dc_vals, 2)
+    out["isi"] = np.round(isi_vals, 2)
+    out["bui"] = np.round(bui_vals, 2)
+    out["fwi"] = np.round(fwi_vals, 2)
+    # Keep historical column name for compatibility with existing models/scripts.
+    out["fwi_proxy"] = out["fwi"]
     return out
 
 
@@ -606,6 +783,12 @@ def predict_real_daily(prediction_date: str) -> str:
                 "precip_30d_mm": float(sum(precip_tail[-30:])),
                 "dry_days_30d": int(sum(1 for x in precip_tail[-30:] if x < 1.0)),
                 "vpd_kpa": row.vpd_kpa,
+                "ffmc": row.ffmc,
+                "dmc": row.dmc,
+                "dc": row.dc,
+                "isi": row.isi,
+                "bui": row.bui,
+                "fwi": row.fwi,
                 "fwi_proxy": row.fwi_proxy,
                 "ndvi": ndvi_value,
                 "ndvi_anom_30d": ndvi_anom_30d,

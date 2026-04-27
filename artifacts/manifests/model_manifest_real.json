@@ -1,13 +1,13 @@
 {
   "model_filename": "wildfire_risk_model_real.joblib",
   "metrics": {
-    "rows_train": 9700,
-    "rows_valid": 2500,
-    "positive_rate_train": 0.19835051546391752,
-    "positive_rate_valid": 0.1604,
-    "average_precision": 0.5797231817591826,
-    "roc_auc": 0.8965960515576233,
-    "brier_score": 0.11310823066332998
+    "rows_train": 19400,
+    "rows_valid": 5000,
+    "positive_rate_train": 0.17603092783505156,
+    "positive_rate_valid": 0.131,
+    "average_precision": 0.5147687394141796,
+    "roc_auc": 0.8649592846036948,
+    "brier_score": 0.10002708099156685
   },
   "feature_columns": [
     "t2m_max_c",
