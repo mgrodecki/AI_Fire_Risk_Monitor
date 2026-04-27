@@ -258,15 +258,17 @@ def build_offline_html(df: pd.DataFrame, title: str, overlays: dict) -> str:
     const data = __DATA_JSON__;
     const svg = document.getElementById('svg');
     const tooltip = document.getElementById('tooltip');
-    const W = 1200, H = 760, PAD = 58;
+    const mapWrap = document.querySelector('.map-wrap');
+    const W = 1200, H = 760;
+    const PAD_L = 58, PAD_R = 260, PAD_T = 58, PAD_B = 58;
 
     document.getElementById('title').textContent = data.title;
     const lonMin = data.bounds.lon_min, lonMax = data.bounds.lon_max;
     const latMin = data.bounds.lat_min, latMax = data.bounds.lat_max;
     const lonRange = Math.max(1e-9, lonMax - lonMin);
     const latRange = Math.max(1e-9, latMax - latMin);
-    const xScale = lon => PAD + ((lon - lonMin) / lonRange) * (W - 2 * PAD);
-    const yScale = lat => H - PAD - ((lat - latMin) / latRange) * (H - 2 * PAD);
+    const xScale = lon => PAD_L + ((lon - lonMin) / lonRange) * (W - PAD_L - PAD_R);
+    const yScale = lat => H - PAD_B - ((lat - latMin) / latRange) * (H - PAD_T - PAD_B);
 
     const groups = {
       grid: document.createElementNS('http://www.w3.org/2000/svg', 'g'),
@@ -309,16 +311,16 @@ def build_offline_html(df: pd.DataFrame, title: str, overlays: dict) -> str:
 
     // Graticule + axis labels
     for (let i = 0; i <= 6; i++) {
-      const x = PAD + (i / 6) * (W - 2 * PAD);
-      const y = PAD + (i / 6) * (H - 2 * PAD);
-      groups.grid.appendChild(makeLine(x, PAD, x, H - PAD, 'tick'));
-      groups.grid.appendChild(makeLine(PAD, y, W - PAD, y, 'tick'));
+      const x = PAD_L + (i / 6) * (W - PAD_L - PAD_R);
+      const y = PAD_T + (i / 6) * (H - PAD_T - PAD_B);
+      groups.grid.appendChild(makeLine(x, PAD_T, x, H - PAD_B, 'tick'));
+      groups.grid.appendChild(makeLine(PAD_L, y, W - PAD_R, y, 'tick'));
       const lon = lonMin + (i / 6) * lonRange;
       const lat = latMax - (i / 6) * latRange;
-      groups.grid.appendChild(makeText(x, H - PAD + 18, lon.toFixed(2)));
-      groups.grid.appendChild(makeText(PAD - 8, y + 4, lat.toFixed(2), 'end'));
+      groups.grid.appendChild(makeText(x, H - PAD_B + 18, lon.toFixed(2)));
+      groups.grid.appendChild(makeText(PAD_L - 8, y + 4, lat.toFixed(2), 'end'));
     }
-    groups.grid.appendChild(makeText(W / 2, H - 8, 'Longitude'));
+    groups.grid.appendChild(makeText((PAD_L + (W - PAD_R)) / 2, H - 8, 'Longitude'));
     groups.grid.appendChild(makeText(16, H / 2, 'Latitude', 'middle'));
 
     // Counties (thin)
@@ -350,6 +352,20 @@ def build_offline_html(df: pd.DataFrame, title: str, overlays: dict) -> str:
 
     // Risk points
     const pointEls = [];
+    function positionTooltip(e) {
+      const tw = tooltip.offsetWidth || 260;
+      const th = tooltip.offsetHeight || 140;
+      const rect = mapWrap.getBoundingClientRect();
+      let left = (e.clientX - rect.left) + 14;
+      let top = (e.clientY - rect.top) - 10;
+      if (left + tw > rect.width - 10) left = (e.clientX - rect.left) - tw - 14;
+      if (left < 8) left = 8;
+      if (top + th > rect.height - 8) top = rect.height - th - 8;
+      if (top < 8) top = 8;
+      tooltip.style.left = `${left}px`;
+      tooltip.style.top = `${top}px`;
+    }
+
     for (const f of data.features) {
       const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       c.setAttribute('cx', xScale(f.lon));
@@ -363,8 +379,7 @@ def build_offline_html(df: pd.DataFrame, title: str, overlays: dict) -> str:
       c.addEventListener('mousemove', (e) => {
         const d = JSON.parse(c.dataset.payload);
         tooltip.style.display = 'block';
-        tooltip.style.left = `${e.clientX - 350}px`;
-        tooltip.style.top = `${e.clientY - 42}px`;
+        positionTooltip(e);
         tooltip.innerHTML = `
           <b>Cell:</b> ${d.cell_id}<br/>
           <b>Class:</b> ${d.risk_class}<br/>
@@ -372,7 +387,7 @@ def build_offline_html(df: pd.DataFrame, title: str, overlays: dict) -> str:
           <b>Pred fire 1d:</b> ${d.pred_fire_next_1d.toFixed(6)}<br/>
           <hr/>
           <b>VPD:</b> ${d.vpd_kpa.toFixed(3)} kPa<br/>
-          <b>FWI proxy:</b> ${d.fwi_proxy.toFixed(2)}<br/>
+          <b>Canadian FWI:</b> ${d.fwi_proxy.toFixed(2)}<br/>
           <b>NDVI:</b> ${d.ndvi.toFixed(3)}<br/>
           <b>Soil moisture:</b> ${d.soil_moisture_surface_m3m3.toFixed(3)}<br/>
           <b>Lightning:</b> ${d.lightning_count.toFixed(2)}
